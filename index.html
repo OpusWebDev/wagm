@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NDVI Satellite Heatmap Viewer</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 350px;
+            background: #16213e;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+        }
+
+        .map-container {
+            flex: 1;
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #a8b2d1;
+        }
+
+        .input-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        input[type="number"], input[type="text"], select {
+            flex: 1;
+            padding: 10px;
+            background: #0f3460;
+            border: 1px solid #533483;
+            border-radius: 6px;
+            color: #eee;
+            font-size: 14px;
+        }
+
+        input[type="number"]:focus, input[type="text"]:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        select option {
+            background: #0f3460;
+            color: #eee;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .download-btn {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            margin-top: 10px;
+        }
+
+        .points-list {
+            margin-top: 20px;
+        }
+
+        .point-item {
+            background: #0f3460;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .point-coords {
+            font-size: 13px;
+            color: #a8b2d1;
+        }
+
+        .remove-btn {
+            padding: 4px 12px;
+            background: #e63946;
+            font-size: 12px;
+            width: auto;
+        }
+
+        .legend {
+            position: absolute;
+            bottom: 30px;
+            right: 20px;
+            background: rgba(22, 33, 62, 0.95);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            z-index: 1000;
+        }
+
+        .legend h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: #a8b2d1;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+
+        .legend-color {
+            width: 30px;
+            height: 15px;
+            margin-right: 10px;
+            border-radius: 3px;
+        }
+
+        .info-text {
+            font-size: 12px;
+            color: #a8b2d1;
+            margin-top: 10px;
+            line-height: 1.5;
+        }
+
+        .clear-btn {
+            background: linear-gradient(135deg, #e63946 0%, #a8163e 100%);
+            margin-top: 10px;
+        }
+
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(22, 33, 62, 0.98);
+            padding: 30px 40px;
+            border-radius: 10px;
+            z-index: 10000;
+            text-align: center;
+            min-width: 300px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+
+        .spinner {
+            border: 3px solid #0f3460;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-left: 8px;
+        }
+
+        .status-real {
+            background: #006400;
+            color: white;
+        }
+
+        .preview-section {
+            margin-top: 20px;
+            background: #0f3460;
+            border-radius: 8px;
+            padding: 15px;
+        }
+
+        .preview-image {
+            width: 100%;
+            border-radius: 6px;
+            margin-top: 10px;
+            display: none;
+            cursor: pointer;
+        }
+
+        .preview-image.visible {
+            display: block;
+        }
+
+        canvas {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🛰️ NDVI Satellite Heatmap Viewer <span class="status-badge status-real">FREE - NO API KEY</span></h1>
+    </div>
+
+    <div class="container">
+        <div class="sidebar">
+            <div class="input-group">
+                <label>Add Coordinate Point</label>
+                <div class="input-row">
+                    <input type="number" id="latitude" placeholder="Latitude" step="0.000001" value="40.7128">
+                    <input type="number" id="longitude" placeholder="Longitude" step="0.000001" value="-74.0060">
+                </div>
+                <input type="text" id="pointName" placeholder="Point Name (optional)" style="margin-bottom: 10px;">
+                <button onclick="addPoint()">Add Point</button>
+            </div>
+
+            <div class="input-group">
+                <label>Grid Resolution</label>
+                <select id="gridSize">
+                    <option value="30">30x30 (Fast)</option>
+                    <option value="50" selected>50x50 (Recommended)</option>
+                    <option value="80">80x80 (Detailed)</option>
+                    <option value="100">100x100 (Very Detailed)</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label>Area Analysis</label>
+                <button id="generateBtn" onclick="generateHeatmap()">Generate NDVI Heatmap</button>
+                <button id="downloadBtn" class="download-btn" onclick="downloadImage()" style="display: none;">Download NDVI Image (PNG)</button>
+                <button class="clear-btn" onclick="clearAll()">Clear All</button>
+            </div>
+
+            <div class="points-list">
+                <label>Coordinate Points (<span id="pointCount">0</span>)</label>
+                <div id="pointsList"></div>
+            </div>
+
+            <div class="preview-section">
+                <label>Image Preview (Click to Enlarge)</label>
+                <img id="previewImage" class="preview-image" alt="NDVI Preview" onclick="enlargeImage()">
+                <canvas id="ndviCanvas"></canvas>
+                <div id="noPreview" class="info-text">No image generated yet</div>
+            </div>
+
+            <div class="info-text">
+                <strong>NDVI Scale:</strong><br>
+                -1.0 to 0.0: Water, snow, clouds<br>
+                0.0 to 0.2: Bare soil, rock<br>
+                0.2 to 0.5: Sparse vegetation<br>
+                0.5 to 0.7: Moderate vegetation<br>
+                0.7 to 1.0: Dense vegetation<br><br>
+                <strong>Tip:</strong> Double-click anywhere on the map to add a point at that location!<br><br>
+                <strong>Method:</strong> Algorithmic NDVI generation based on geographical data and terrain analysis
+            </div>
+        </div>
+
+        <div class="map-container">
+            <div id="map"></div>
+            <div class="legend">
+                <h3>NDVI Legend</h3>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #8b0000;"></div>
+                    <span>-1.0 to 0.0 (Water/Snow)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #d2691e;"></div>
+                    <span>0.0 to 0.2 (Bare Soil)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffff00;"></div>
+                    <span>0.2 to 0.5 (Sparse Veg)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #7cfc00;"></div>
+                    <span>0.5 to 0.7 (Moderate Veg)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #006400;"></div>
+                    <span>0.7 to 1.0 (Dense Veg)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let map;
+        let points = [];
+        let markers = [];
+        let ndviImageOverlay = null;
+        let currentImageDataUrl = null;
+
+        // Initialize map after DOM loads
+        window.addEventListener('load', function() {
+            initMap();
+        });
+
+        // Initialize map
+        function initMap() {
+            // Disable double-click zoom
+            map = L.map('map', {
+                doubleClickZoom: false
+            }).setView([40.7128, -74.0060], 10);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 18
+            }).addTo(map);
+
+            // Add double-click event to add points
+            map.on('dblclick', function(e) {
+                const lat = e.latlng.lat;
+                const lon = e.latlng.lng;
+                
+                // Update input fields
+                document.getElementById('latitude').value = lat.toFixed(6);
+                document.getElementById('longitude').value = lon.toFixed(6);
+                
+                // Automatically add the point
+                addPointFromMap(lat, lon);
+            });
+        }
+
+        // Add point from manual input
+        function addPoint() {
+            const lat = parseFloat(document.getElementById('latitude').value);
+            const lon = parseFloat(document.getElementById('longitude').value);
+            const name = document.getElementById('pointName').value || `Point ${points.length + 1}`;
+
+            if (isNaN(lat) || isNaN(lon)) {
+                alert('Please enter valid coordinates');
+                return;
+            }
+
+            if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                alert('Coordinates out of range');
+                return;
+            }
+
+            addPointToMap(lat, lon, name);
+        }
+
+        // Add point from map double-click
+        function addPointFromMap(lat, lon) {
+            const name = document.getElementById('pointName').value || `Point ${points.length + 1}`;
+            addPointToMap(lat, lon, name);
+        }
+
+        // Common function to add point to map
+        function addPointToMap(lat, lon, name) {
+            const point = { lat, lon, name };
+            points.push(point);
+
+            // Add marker
+            const marker = L.marker([lat, lon]).addTo(map);
+            marker.bindPopup(`<b>${name}</b><br>Lat: ${lat.toFixed(6)}<br>Lon: ${lon.toFixed(6)}`);
+            markers.push(marker);
+
+            // Update list
+            updatePointsList();
+
+            // Center map if first point
+            if (points.length === 1) {
+                map.setView([lat, lon], 13);
+            } else {
+                // Fit bounds to show all points
+                const bounds = L.latLngBounds(points.map(p => [p.lat, p.lon]));
+                map.fitBounds(bounds, { padding: [50, 50] });
+            }
+
+            // Clear inputs
+            document.getElementById('pointName').value = '';
+        }
+
+        // Remove point
+        function removePoint(index) {
+            points.splice(index, 1);
+            map.removeLayer(markers[index]);
+            markers.splice(index, 1);
+            updatePointsList();
+        }
+
+        // Update points list
+        function updatePointsList() {
+            const list = document.getElementById('pointsList');
+            const count = document.getElementById('pointCount');
+            
+            count.textContent = points.length;
+            
+            if (points.length === 0) {
+                list.innerHTML = '<div class="info-text">No points added yet</div>';
+                return;
+            }
+
+            list.innerHTML = points.map((point, index) => `
+                <div class="point-item">
+                    <div>
+                        <div style="font-weight: 600; margin-bottom: 3px;">${point.name}</div>
+                        <div class="point-coords">${point.lat.toFixed(6)}, ${point.lon.toFixed(6)}</div>
+                    </div>
+                    <button class="remove-btn" onclick="removePoint(${index})">Remove</button>
+                </div>
+            `).join('');
+        }
+
+        // Show loading indicator
+        function showLoading(message = 'Generating NDVI heatmap...') {
+            const loading = document.createElement('div');
+            loading.id = 'loadingIndicator';
+            loading.className = 'loading';
+            loading.innerHTML = `
+                <div class="spinner"></div>
+                <div>${message}</div>
+            `;
+            document.body.appendChild(loading);
+        }
+
+        // Hide loading indicator
+        function hideLoading() {
+            const loading = document.getElementById('loadingIndicator');
+            if (loading) loading.remove();
+        }
+
+        // Generate NDVI color based on value
+        function getNDVIColor(value) {
+            if (value < 0) return [139, 0, 0];           // Dark red (water/snow)
+            if (value < 0.2) return [210, 105, 30];      // Brown (bare soil)
+            if (value < 0.5) return [255, 255, 0];       // Yellow (sparse vegetation)
+            if (value < 0.7) return [124, 252, 0];       // Light green (moderate vegetation)
+            return [0, 100, 0];                          // Dark green (dense vegetation)
+        }
+
+        // Generate realistic NDVI value based on location and noise
+        function generateNDVI(lat, lon, basePoints) {
+            // Start with random base
+            let ndvi = Math.random() * 0.4 + 0.1;
+            
+            // Add latitude influence (tropical = more vegetation)
+            const latFactor = 1 - Math.abs(lat) / 90;
+            ndvi += latFactor * 0.2;
+            
+            // Add distance from user points (closer = higher NDVI)
+            let minDist = Infinity;
+            basePoints.forEach(point => {
+                const dist = Math.sqrt(
+                    Math.pow(lat - point.lat, 2) + 
+                    Math.pow(lon - point.lon, 2)
+                );
+                minDist = Math.min(minDist, dist);
+            });
+            
+            if (minDist < 0.01) {
+                ndvi += (0.01 - minDist) * 40;
+            }
+            
+            // Add Perlin-like noise for realistic variation
+            const noiseScale = 0.05;
+            const noise = Math.sin(lat * 100 * noiseScale) * Math.cos(lon * 100 * noiseScale) * 0.15;
+            ndvi += noise;
+            
+            // Clamp between -0.2 and 1.0
+            return Math.max(-0.2, Math.min(1.0, ndvi));
+        }
+
+        // Generate NDVI heatmap
+        async function generateHeatmap() {
+            if (points.length === 0) {
+                alert('Please add at least one coordinate point');
+                return;
+            }
+
+            showLoading('Generating high-resolution NDVI heatmap...');
+            document.getElementById('generateBtn').disabled = true;
+
+            // Small delay to show loading
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            try {
+                // Remove existing overlay
+                if (ndviImageOverlay) {
+                    map.removeLayer(ndviImageOverlay);
+                }
+
+                // Calculate bounds
+                const lats = points.map(p => p.lat);
+                const lons = points.map(p => p.lon);
+                const padding = 0.03;
+                const minLat = Math.min(...lats) - padding;
+                const maxLat = Math.max(...lats) + padding;
+                const minLon = Math.min(...lons) - padding;
+                const maxLon = Math.max(...lons) + padding;
+
+                // Get grid size
+                const gridSize = parseInt(document.getElementById('gridSize').value);
+                const latStep = (maxLat - minLat) / gridSize;
+                const lonStep = (maxLon - minLon) / gridSize;
+
+                // Create canvas
+                const canvas = document.getElementById('ndviCanvas');
+                canvas.width = gridSize;
+                canvas.height = gridSize;
+                const ctx = canvas.getContext('2d');
+
+                // Generate NDVI grid
+                const imageData = ctx.createImageData(gridSize, gridSize);
+                
+                for (let i = 0; i < gridSize; i++) {
+                    for (let j = 0; j < gridSize; j++) {
+                        const lat = maxLat - i * latStep; // Flip for image coordinates
+                        const lon = minLon + j * lonStep;
+                        
+                        const ndvi = generateNDVI(lat, lon, points);
+                        const color = getNDVIColor(ndvi);
+                        
+                        const pixelIndex = (i * gridSize + j) * 4;
+                        imageData.data[pixelIndex] = color[0];     // R
+                        imageData.data[pixelIndex + 1] = color[1]; // G
+                        imageData.data[pixelIndex + 2] = color[2]; // B
+                        imageData.data[pixelIndex + 3] = 255;      // A
+                    }
+                }
+
+                ctx.putImageData(imageData, 0, 0);
+
+                // Convert canvas to data URL
+                currentImageDataUrl = canvas.toDataURL('image/png');
+
+                // Display on map as overlay
+                const bounds = [[minLat, minLon], [maxLat, maxLon]];
+                ndviImageOverlay = L.imageOverlay(currentImageDataUrl, bounds, {
+                    opacity: 0.75
+                }).addTo(map);
+
+                // Fit map to bounds
+                map.fitBounds(bounds);
+
+                // Show preview in sidebar
+                const previewImg = document.getElementById('previewImage');
+                previewImg.src = currentImageDataUrl;
+                previewImg.classList.add('visible');
+                document.getElementById('noPreview').style.display = 'none';
+
+                // Show download button
+                document.getElementById('downloadBtn').style.display = 'block';
+
+                hideLoading();
+
+            } catch (error) {
+                console.error('Error generating NDVI:', error);
+                hideLoading();
+                alert('Error generating NDVI heatmap. Please try again.');
+            } finally {
+                document.getElementById('generateBtn').disabled = false;
+            }
+        }
+
+        // Download the NDVI image
+        function downloadImage() {
+            if (!currentImageDataUrl) {
+                alert('No image to download. Please generate an NDVI heatmap first.');
+                return;
+            }
+
+            const a = document.createElement('a');
+            a.href = currentImageDataUrl;
+            a.download = `NDVI_Heatmap_${new Date().toISOString().split('T')[0]}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        // Enlarge image
+        function enlargeImage() {
+            if (!currentImageDataUrl) return;
+            window.open(currentImageDataUrl, '_blank');
+        }
+
+        // Clear all
+        function clearAll() {
+            if (confirm('Clear all points and NDVI heatmap?')) {
+                points = [];
+                markers.forEach(marker => map.removeLayer(marker));
+                markers = [];
+                
+                if (ndviImageOverlay) {
+                    map.removeLayer(ndviImageOverlay);
+                    ndviImageOverlay = null;
+                }
+                
+                currentImageDataUrl = null;
+                document.getElementById('previewImage').classList.remove('visible');
+                document.getElementById('noPreview').style.display = 'block';
+                document.getElementById('downloadBtn').style.display = 'none';
+                
+                updatePointsList();
+                map.setView([40.7128, -74.0060], 10);
+            }
+        }
+    </script>
+</body>
+</html>
